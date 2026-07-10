@@ -387,7 +387,7 @@ function BottomTabBar({ role, page, setPage, setNavOpen }) {
   );
 }
 
-/* ============================== LOGIN ============================== */
+/* ============================== LOGiIN ============================== */
 function LoginScreen({ users, onLogin }) {
   const [mode, setMode] = useState("staff");
   const [username, setUsername] = useState("");
