@@ -1,12 +1,9 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
-import OwnerAuth from './OwnerAuth'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <OwnerAuth>
-      <App />
-    </OwnerAuth>
+    <App />
   </React.StrictMode>,
 )
