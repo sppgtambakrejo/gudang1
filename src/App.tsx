@@ -77,19 +77,14 @@ function fmtTgl(iso) {
   return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-async function currentOwnerId() {
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) throw new Error("Sesi pemilik Supabase tidak tersedia.");
-  return data.user.id;
-}
+const WORKSPACE_ID = import.meta.env.VITE_WORKSPACE_ID || "gudang-utama";
 
 async function storageGet(key, fallback) {
   try {
-    const userId = await currentOwnerId();
     const { data, error } = await supabase
-      .from("app_storage")
+      .from("app_storage_shared")
       .select("value")
-      .eq("user_id", userId)
+      .eq("workspace_id", WORKSPACE_ID)
       .eq("key", key)
       .maybeSingle();
     if (error) throw error;
@@ -100,15 +95,15 @@ async function storageGet(key, fallback) {
   }
 }
 async function storageSet(key, value) {
-  try {
-    const userId = await currentOwnerId();
-    const { error } = await supabase
-      .from("app_storage")
-      .upsert({ user_id: userId, key, value, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
-    if (error) throw error;
-  } catch (e) {
-    console.error("supabase storage set failed", key, e);
-    throw e;
+  const { error } = await supabase
+    .from("app_storage_shared")
+    .upsert(
+      { workspace_id: WORKSPACE_ID, key, value, updated_at: new Date().toISOString() },
+      { onConflict: "workspace_id,key" },
+    );
+  if (error) {
+    console.error("supabase storage set failed", key, error);
+    throw error;
   }
 }
 
