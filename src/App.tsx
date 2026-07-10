@@ -459,7 +459,7 @@ function LoginScreen({ users, onLogin }) {
             </form>
           )}
           <div style={{ marginTop: 16, fontSize: 11.5, color: "#8B8371", lineHeight: 1.5 }}>
-            Demo akun awal: <b>superadmin / super123</b>, <b>admin1 / admin123</b>, PIN viewer <b>1234</b>. Segera ganti kredensial ini di menu Manajemen User.
+          
           </div>
         </div>
       </div>
