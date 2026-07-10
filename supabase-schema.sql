@@ -1,39 +1,45 @@
 -- Jalankan seluruh SQL ini di Supabase Dashboard > SQL Editor.
+-- Versi satu-login: pengguna langsung login memakai akun gudang.
 
-create table if not exists public.app_storage (
-  user_id uuid not null references auth.users(id) on delete cascade,
+create table if not exists public.app_storage_shared (
+  workspace_id text not null,
   key text not null,
   value jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now(),
-  primary key (user_id, key)
+  primary key (workspace_id, key)
 );
 
-alter table public.app_storage enable row level security;
+alter table public.app_storage_shared enable row level security;
 
-create policy "Owner can read own app data"
-on public.app_storage
+drop policy if exists "Gudang shared read" on public.app_storage_shared;
+drop policy if exists "Gudang shared insert" on public.app_storage_shared;
+drop policy if exists "Gudang shared update" on public.app_storage_shared;
+drop policy if exists "Gudang shared delete" on public.app_storage_shared;
+
+create policy "Gudang shared read"
+on public.app_storage_shared
 for select
-to authenticated
-using ((select auth.uid()) = user_id);
+to anon, authenticated
+using (true);
 
-create policy "Owner can insert own app data"
-on public.app_storage
+create policy "Gudang shared insert"
+on public.app_storage_shared
 for insert
-to authenticated
-with check ((select auth.uid()) = user_id);
+to anon, authenticated
+with check (true);
 
-create policy "Owner can update own app data"
-on public.app_storage
+create policy "Gudang shared update"
+on public.app_storage_shared
 for update
-to authenticated
-using ((select auth.uid()) = user_id)
-with check ((select auth.uid()) = user_id);
+to anon, authenticated
+using (true)
+with check (true);
 
-create policy "Owner can delete own app data"
-on public.app_storage
+create policy "Gudang shared delete"
+on public.app_storage_shared
 for delete
-to authenticated
-using ((select auth.uid()) = user_id);
+to anon, authenticated
+using (true);
 
-create index if not exists app_storage_updated_at_idx
-on public.app_storage (updated_at desc);
+create index if not exists app_storage_shared_updated_at_idx
+on public.app_storage_shared (updated_at desc);
