@@ -434,7 +434,7 @@ function LoginScreen({ users, onLogin }) {
 
         <div style={{ background: "#FBF9F3", borderRadius: 16, padding: 24, boxShadow: "0 20px 50px rgba(0,0,0,.35)" }}>
           <div style={{ display: "flex", gap: 4, background: "#EDE8DA", borderRadius: 10, padding: 4, marginBottom: 20 }}>
-            <button onClick={() => { setMode("staff"); setError(""); }} style={{ flex: 1, padding: "9px 0", borderRadius: 7, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13.5, background: mode === "staff" ? "#2F5D50" : "transparent", color: mode === "staff" ? "#fff" : "#5C5646" }}>Admin / Super Admin</button>
+            <button onClick={() => { setMode("staff"); setError(""); }} style={{ flex: 1, padding: "9px 0", borderRadius: 7, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13.5, background: mode === "staff" ? "#2F5D50" : "transparent", color: mode === "staff" ? "#fff" : "#5C5646" }}>Admin</button>
             <button onClick={() => { setMode("viewer"); setError(""); }} style={{ flex: 1, padding: "9px 0", borderRadius: 7, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13.5, background: mode === "viewer" ? "#2F5D50" : "transparent", color: mode === "viewer" ? "#fff" : "#5C5646" }}>Viewer (PIN)</button>
           </div>
 
