@@ -869,7 +869,7 @@ function Penerimaan({ ctx }) {
               <Field label="Nama Supplier"><SupplierPicker suppliers={suppliers} value={form.supplier} onChange={(v) => setForm({ ...form, supplier: v })} /></Field>
               <Field label="Barang"><ItemPicker items={masterItems} value={form.kode} onChange={(v) => setForm({ ...form, kode: v })} /></Field>
               <div style={{ display: "flex", gap: 10 }}>
-                <div style={{ flex: 1 }}><Field label="Volume"><input type="number" min="0" value={form.vol} onChange={(e) => setForm({ ...form, vol: e.target.value })} style={inputStyle} /></Field></div>
+                <div style={{ flex: 1 }}><Field label="Volume"><input type="number" min="0" step="0.01" inputMode="decimal" value={form.vol} onChange={(e) => setForm({ ...form, vol: e.target.value })} style={inputStyle} /></Field></div>
                 <div style={{ flex: 1 }}><Field label="Harga Beli / satuan"><input type="number" min="0" value={form.harga} onChange={(e) => setForm({ ...form, harga: e.target.value })} style={inputStyle} /></Field></div>
               </div>
               {msg && <div style={{ fontSize: 12.5, color: "#2F5D50", marginBottom: 10 }}>{msg}</div>}
@@ -944,7 +944,7 @@ function Pengeluaran({ ctx }) {
             <form onSubmit={submit}>
               <Field label="Tanggal"><input type="date" value={form.tanggal} onChange={(e) => setForm({ ...form, tanggal: e.target.value })} style={inputStyle} /></Field>
               <Field label="Barang"><ItemPicker items={masterItems} value={form.kode} onChange={(v) => setForm({ ...form, kode: v })} /></Field>
-              <Field label="Volume"><input type="number" min="0" value={form.vol} onChange={(e) => setForm({ ...form, vol: e.target.value })} style={inputStyle} /></Field>
+              <Field label="Volume"><input type="number" min="0" step="0.01" inputMode="decimal" value={form.vol} onChange={(e) => setForm({ ...form, vol: e.target.value })} style={inputStyle} /></Field>
               {msg && <div style={{ fontSize: 12.5, color: msg.includes("cukup") ? "#A8402A" : "#2F5D50", marginBottom: 10 }}>{msg}</div>}
               <button type="submit" style={primaryBtn}><Plus size={16} /> Simpan Pengeluaran</button>
             </form>
