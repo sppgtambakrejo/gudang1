@@ -860,6 +860,52 @@ function SupplierPicker({ suppliers, value, onChange }) {
   );
 }
 
+/* ============================== FILTER RIWAYAT (tanggal & petugas) ============================== */
+function useRiwayatFilter(list) {
+  const [mode, setMode] = useState("semua"); // "semua" | "harian" | "rentang"
+  const [tgl, setTgl] = useState(todayInput());
+  const [dari, setDari] = useState(todayInput());
+  const [sampai, setSampai] = useState(todayInput());
+  const [oleh, setOleh] = useState("ALL");
+
+  const petugasList = useMemo(() => Array.from(new Set(list.map((t) => t.oleh))).sort((a, b) => a.localeCompare(b)), [list]);
+
+  const filtered = useMemo(() => list.filter((t) => {
+    if (oleh !== "ALL" && t.oleh !== oleh) return false;
+    if (mode === "harian" && t.tanggal !== tgl) return false;
+    if (mode === "rentang" && ((dari && t.tanggal < dari) || (sampai && t.tanggal > sampai))) return false;
+    return true;
+  }), [list, mode, tgl, dari, sampai, oleh]);
+
+  return { filtered, mode, setMode, tgl, setTgl, dari, setDari, sampai, setSampai, oleh, setOleh, petugasList };
+}
+function RiwayatFilterBar({ f, petugasLabel }) {
+  const smallInput = { ...inputStyle, width: 148, padding: "8px 10px" };
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+      <select value={f.mode} onChange={(e) => f.setMode(e.target.value)} style={{ ...smallInput, width: 152 }}>
+        <option value="semua">Semua Tanggal</option>
+        <option value="harian">Per Hari</option>
+        <option value="rentang">Rentang Tanggal</option>
+      </select>
+      {f.mode === "harian" && (
+        <input type="date" value={f.tgl} onChange={(e) => f.setTgl(e.target.value)} style={smallInput} />
+      )}
+      {f.mode === "rentang" && (
+        <>
+          <input type="date" value={f.dari} onChange={(e) => f.setDari(e.target.value)} style={smallInput} />
+          <span style={{ fontSize: 12.5, color: "#8B8371" }}>s/d</span>
+          <input type="date" value={f.sampai} onChange={(e) => f.setSampai(e.target.value)} style={smallInput} />
+        </>
+      )}
+      <select value={f.oleh} onChange={(e) => f.setOleh(e.target.value)} style={{ ...smallInput, width: 172 }}>
+        <option value="ALL">{petugasLabel || "Semua Petugas"}</option>
+        {f.petugasList.map((p) => <option key={p} value={p}>{p}</option>)}
+      </select>
+    </div>
+  );
+}
+
 /* ============================== PENERIMAAN BARANG ============================== */
 function Penerimaan({ ctx }) {
   const { masterItems, masuk, persist, session, addLog, periode, suppliers, ensureSupplier } = ctx;
@@ -885,7 +931,9 @@ function Penerimaan({ ctx }) {
     setTimeout(() => setMsg(""), 2000);
   }
 
-  const mine = masuk.filter((t) => t.periodeId === periode.viewingId).sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
+  const base = masuk.filter((t) => t.periodeId === periode.viewingId).sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
+  const f = useRiwayatFilter(base);
+  const mine = f.filtered;
 
   return (
     <div>
@@ -909,6 +957,7 @@ function Penerimaan({ ctx }) {
         )}
         <Card style={{ maxHeight: 520, overflowY: "auto" }}>
           <div className="sg" style={{ fontWeight: 700, marginBottom: 10 }}>Riwayat Penerimaan</div>
+          <RiwayatFilterBar f={f} petugasLabel="Semua Penerima" />
           <div className="table-wrap">
             <table>
               <thead><tr>{["Tanggal", "Barang", "Supplier", "Vol", "Harga", "Jumlah", "Oleh"].map((h) => <Th key={h}>{h}</Th>)}</tr></thead>
@@ -924,7 +973,7 @@ function Penerimaan({ ctx }) {
                     <Td>{t.oleh}<div style={{ fontSize: 10, color: "#A39B87" }}>{fmtDate(t.waktu)}</div></Td>
                   </tr>
                 ))}
-                {mine.length === 0 && <tr><td colSpan={7}><Empty text="Belum ada data." /></td></tr>}
+                {mine.length === 0 && <tr><td colSpan={7}><Empty text={base.length === 0 ? "Belum ada data." : "Tidak ada data yang cocok dengan filter."} /></td></tr>}
               </tbody>
             </table>
           </div>
@@ -962,7 +1011,9 @@ function Pengeluaran({ ctx }) {
     setTimeout(() => setMsg(""), 2000);
   }
 
-  const mine = keluar.filter((t) => t.periodeId === periode.viewingId).sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
+  const base = keluar.filter((t) => t.periodeId === periode.viewingId).sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
+  const f = useRiwayatFilter(base);
+  const mine = f.filtered;
 
   return (
     <div>
@@ -982,6 +1033,7 @@ function Pengeluaran({ ctx }) {
         )}
         <Card style={{ maxHeight: 520, overflowY: "auto" }}>
           <div className="sg" style={{ fontWeight: 700, marginBottom: 10 }}>Riwayat Pengeluaran</div>
+          <RiwayatFilterBar f={f} petugasLabel="Semua Petugas" />
           <div className="table-wrap">
             <table>
               <thead><tr>{["Tanggal", "Barang", "Vol", "Petugas"].map((h) => <Th key={h}>{h}</Th>)}</tr></thead>
@@ -994,7 +1046,7 @@ function Pengeluaran({ ctx }) {
                     <Td>{t.oleh}<div style={{ fontSize: 10, color: "#A39B87" }}>{fmtDate(t.waktu)}</div></Td>
                   </tr>
                 ))}
-                {mine.length === 0 && <tr><td colSpan={4}><Empty text="Belum ada data." /></td></tr>}
+                {mine.length === 0 && <tr><td colSpan={4}><Empty text={base.length === 0 ? "Belum ada data." : "Tidak ada data yang cocok dengan filter."} /></td></tr>}
               </tbody>
             </table>
           </div>
