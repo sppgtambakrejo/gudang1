@@ -99,10 +99,13 @@ async function storageGet(key, fallback) {
       .eq("key", key)
       .maybeSingle();
     if (error) throw error;
-    return data?.value ?? fallback;
+    // ok:true berarti request ke server benar-benar berhasil (baris memang kosong kalau value null).
+    return { value: data?.value ?? fallback, ok: true };
   } catch (e) {
     console.error("supabase storage get failed", key, e);
-    return fallback;
+    // ok:false berarti request GAGAL (network/RLS/timeout) - BUKAN berarti datanya memang kosong.
+    // Pemanggil wajib menghindari menimpa data server dengan default saat ok:false.
+    return { value: fallback, ok: false };
   }
 }
 async function storageSet(key, value) {
@@ -136,6 +139,8 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(false);
   const [viewingPeriodeId, setViewingPeriodeId] = useState(null);
 
+  const [loadError, setLoadError] = useState(false);
+
   useEffect(() => {
     (async () => {
       const [u, m, k, rv, s, mi, lg, pr, sp, kl] = await Promise.all([
@@ -150,19 +155,31 @@ export default function App() {
         storageGet(KEYS.supplier, null),
         storageGet(KEYS.kelompok, null),
       ]);
-      if (u) setUsers(u); else await storageSet(KEYS.users, DEFAULT_USERS);
-      if (m) setMasuk(m);
-      if (k) setKeluar(k);
-      if (rv) setRevisi(rv);
-      if (s) setSaldoByPeriode(s); else await storageSet(KEYS.saldo, DEFAULT_SALDO_BY_PERIODE);
-      if (mi) setMasterItems(mi); else await storageSet(KEYS.master, ITEMS);
-      if (lg) setLog(lg);
-      if (sp) setSuppliers(sp); else await storageSet(KEYS.supplier, DEFAULT_SUPPLIERS);
-      if (kl) { KELOMPOK = kl; setKelompokVersion((v) => v + 1); } else await storageSet(KEYS.kelompok, KELOMPOK);
-      const finalPeriode = pr || DEFAULT_PERIODE;
-      if (!pr) await storageSet(KEYS.periode, DEFAULT_PERIODE);
-      setPeriodeState(finalPeriode);
-      setViewingPeriodeId(finalPeriode.activeId);
+      const results = [u, m, k, rv, s, mi, lg, pr, sp, kl];
+      const anyFailed = results.some((r) => !r.ok);
+
+      // PENTING: kalau ADA satu saja fetch yang gagal (network/RLS/timeout), jangan tulis default
+      // ke server sama sekali untuk key manapun pada load ini - supaya data asli tidak pernah tertimpa
+      // oleh nilai bawaan hanya karena koneksi sempat bermasalah.
+      if (u.ok) { if (u.value) setUsers(u.value); else await storageSet(KEYS.users, DEFAULT_USERS); }
+      if (m.ok && m.value) setMasuk(m.value);
+      if (k.ok && k.value) setKeluar(k.value);
+      if (rv.ok && rv.value) setRevisi(rv.value);
+      if (s.ok) { if (s.value) setSaldoByPeriode(s.value); else await storageSet(KEYS.saldo, DEFAULT_SALDO_BY_PERIODE); }
+      if (mi.ok) { if (mi.value) setMasterItems(mi.value); else await storageSet(KEYS.master, ITEMS); }
+      if (lg.ok && lg.value) setLog(lg.value);
+      if (sp.ok) { if (sp.value) setSuppliers(sp.value); else await storageSet(KEYS.supplier, DEFAULT_SUPPLIERS); }
+      if (kl.ok) { if (kl.value) { KELOMPOK = kl.value; setKelompokVersion((v) => v + 1); } else await storageSet(KEYS.kelompok, KELOMPOK); }
+      if (pr.ok) {
+        const finalPeriode = pr.value || DEFAULT_PERIODE;
+        if (!pr.value) await storageSet(KEYS.periode, DEFAULT_PERIODE);
+        setPeriodeState(finalPeriode);
+        setViewingPeriodeId(finalPeriode.activeId);
+      } else {
+        // gagal ambil periode & gagal juga tulis default -> tetap perlu id supaya app tidak macet di loading
+        setViewingPeriodeId(periodeState.activeId);
+      }
+      if (anyFailed) setLoadError(true);
       setLoading(false);
     })();
   }, []);
@@ -253,6 +270,22 @@ export default function App() {
     return (
       <div style={{ minHeight: "100vh", background: "#F1EEE4", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif", color: "#6B6355" }}>
         Memuat data gudang...
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#F1EEE4", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif", padding: 20 }}>
+        <div style={{ maxWidth: 440, background: "#FBF9F3", border: "1px solid #E4DFCF", borderRadius: 12, padding: 24, textAlign: "center" }}>
+          <AlertTriangle size={28} color="#C1602E" style={{ marginBottom: 10 }} />
+          <div className="sg" style={{ fontWeight: 700, fontSize: 16, color: "#1B2E27", marginBottom: 8 }}>Gagal memuat sebagian data</div>
+          <div style={{ fontSize: 13, color: "#5C5646", lineHeight: 1.6, marginBottom: 16 }}>
+            Koneksi ke server bermasalah saat mengambil data. Untuk mencegah data asli tertimpa nilai bawaan, aplikasi dihentikan sementara — tidak ada yang ditulis ke server.
+            Silakan periksa koneksi internet Anda lalu coba lagi.
+          </div>
+          <button onClick={() => window.location.reload()} style={primaryBtn}>Muat Ulang Halaman</button>
+        </div>
       </div>
     );
   }
@@ -860,52 +893,6 @@ function SupplierPicker({ suppliers, value, onChange }) {
   );
 }
 
-/* ============================== FILTER RIWAYAT (tanggal & petugas) ============================== */
-function useRiwayatFilter(list) {
-  const [mode, setMode] = useState("semua"); // "semua" | "harian" | "rentang"
-  const [tgl, setTgl] = useState(todayInput());
-  const [dari, setDari] = useState(todayInput());
-  const [sampai, setSampai] = useState(todayInput());
-  const [oleh, setOleh] = useState("ALL");
-
-  const petugasList = useMemo(() => Array.from(new Set(list.map((t) => t.oleh))).sort((a, b) => a.localeCompare(b)), [list]);
-
-  const filtered = useMemo(() => list.filter((t) => {
-    if (oleh !== "ALL" && t.oleh !== oleh) return false;
-    if (mode === "harian" && t.tanggal !== tgl) return false;
-    if (mode === "rentang" && ((dari && t.tanggal < dari) || (sampai && t.tanggal > sampai))) return false;
-    return true;
-  }), [list, mode, tgl, dari, sampai, oleh]);
-
-  return { filtered, mode, setMode, tgl, setTgl, dari, setDari, sampai, setSampai, oleh, setOleh, petugasList };
-}
-function RiwayatFilterBar({ f, petugasLabel }) {
-  const smallInput = { ...inputStyle, width: 148, padding: "8px 10px" };
-  return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-      <select value={f.mode} onChange={(e) => f.setMode(e.target.value)} style={{ ...smallInput, width: 152 }}>
-        <option value="semua">Semua Tanggal</option>
-        <option value="harian">Per Hari</option>
-        <option value="rentang">Rentang Tanggal</option>
-      </select>
-      {f.mode === "harian" && (
-        <input type="date" value={f.tgl} onChange={(e) => f.setTgl(e.target.value)} style={smallInput} />
-      )}
-      {f.mode === "rentang" && (
-        <>
-          <input type="date" value={f.dari} onChange={(e) => f.setDari(e.target.value)} style={smallInput} />
-          <span style={{ fontSize: 12.5, color: "#8B8371" }}>s/d</span>
-          <input type="date" value={f.sampai} onChange={(e) => f.setSampai(e.target.value)} style={smallInput} />
-        </>
-      )}
-      <select value={f.oleh} onChange={(e) => f.setOleh(e.target.value)} style={{ ...smallInput, width: 172 }}>
-        <option value="ALL">{petugasLabel || "Semua Petugas"}</option>
-        {f.petugasList.map((p) => <option key={p} value={p}>{p}</option>)}
-      </select>
-    </div>
-  );
-}
-
 /* ============================== PENERIMAAN BARANG ============================== */
 function Penerimaan({ ctx }) {
   const { masterItems, masuk, persist, session, addLog, periode, suppliers, ensureSupplier } = ctx;
@@ -931,9 +918,7 @@ function Penerimaan({ ctx }) {
     setTimeout(() => setMsg(""), 2000);
   }
 
-  const base = masuk.filter((t) => t.periodeId === periode.viewingId).sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
-  const f = useRiwayatFilter(base);
-  const mine = f.filtered;
+  const mine = masuk.filter((t) => t.periodeId === periode.viewingId).sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
 
   return (
     <div>
@@ -957,7 +942,6 @@ function Penerimaan({ ctx }) {
         )}
         <Card style={{ maxHeight: 520, overflowY: "auto" }}>
           <div className="sg" style={{ fontWeight: 700, marginBottom: 10 }}>Riwayat Penerimaan</div>
-          <RiwayatFilterBar f={f} petugasLabel="Semua Penerima" />
           <div className="table-wrap">
             <table>
               <thead><tr>{["Tanggal", "Barang", "Supplier", "Vol", "Harga", "Jumlah", "Oleh"].map((h) => <Th key={h}>{h}</Th>)}</tr></thead>
@@ -973,7 +957,7 @@ function Penerimaan({ ctx }) {
                     <Td>{t.oleh}<div style={{ fontSize: 10, color: "#A39B87" }}>{fmtDate(t.waktu)}</div></Td>
                   </tr>
                 ))}
-                {mine.length === 0 && <tr><td colSpan={7}><Empty text={base.length === 0 ? "Belum ada data." : "Tidak ada data yang cocok dengan filter."} /></td></tr>}
+                {mine.length === 0 && <tr><td colSpan={7}><Empty text="Belum ada data." /></td></tr>}
               </tbody>
             </table>
           </div>
@@ -1630,17 +1614,36 @@ function PengaturanPeriode({ ctx }) {
 
 /* ============================== MANAJEMEN USER (Super Admin) ============================== */
 function ManajemenUser({ ctx }) {
-  const { users, persist, addLog } = ctx;
+  const { users: usersFromCtx, persist, addLog } = ctx;
+  const [users, setUsers] = useState(usersFromCtx);
   const [form, setForm] = useState({ nama: "", username: "", password: "" });
-  const [spForm, setSpForm] = useState({ username: users.superadmin.username, password: "" });
-  const [pinForm, setPinForm] = useState(users.viewerPin);
+  const [spForm, setSpForm] = useState({ username: usersFromCtx.superadmin.username, password: "" });
+  const [pinForm, setPinForm] = useState(usersFromCtx.viewerPin);
   const [msg, setMsg] = useState("");
+
+  // selalu ambil data terbaru dari server saat halaman ini dibuka, jangan andalkan cache tab yang mungkin basi
+  const [syncMsg, setSyncMsg] = useState("");
+  useEffect(() => {
+    (async () => {
+      const res = await storageGet(KEYS.users, usersFromCtx);
+      if (!res.ok) { setSyncMsg("Gagal mengambil data terbaru dari server. Data di bawah mungkin belum yang paling baru — refresh sebelum mengubah apa pun."); return; }
+      if (res.value) {
+        setUsers(res.value);
+        setSpForm((f) => ({ ...f, username: res.value.superadmin.username }));
+        setPinForm(res.value.viewerPin);
+      }
+    })();
+  }, []);
 
   async function addAdmin(e) {
     e.preventDefault();
     if (!form.nama || !form.username || !form.password) { setMsg("Lengkapi semua kolom."); return; }
-    if (users.admins.some((a) => a.username === form.username)) { setMsg("Username sudah dipakai."); return; }
-    const next = { ...users, admins: [...users.admins, { id: uid(), ...form }] };
+    const res = await storageGet(KEYS.users, users);
+    if (!res.ok) { setMsg("Gagal terhubung ke server, coba lagi. (Data tidak disimpan.)"); return; }
+    const fresh = res.value;
+    if (fresh.admins.some((a) => a.username === form.username)) { setMsg("Username sudah dipakai."); return; }
+    const next = { ...fresh, admins: [...fresh.admins, { id: uid(), ...form }] };
+    setUsers(next);
     await persist.users(next);
     await addLog("Tambah admin", `${form.nama} (${form.username})`);
     setForm({ nama: "", username: "", password: "" });
@@ -1650,13 +1653,21 @@ function ManajemenUser({ ctx }) {
 
   async function removeAdmin(id, nama) {
     if (!confirm(`Hapus akun admin "${nama}"?`)) return;
-    await persist.users({ ...users, admins: users.admins.filter((a) => a.id !== id) });
+    const res = await storageGet(KEYS.users, users);
+    if (!res.ok) { setMsg("Gagal terhubung ke server, coba lagi. (Data tidak dihapus.)"); return; }
+    const next = { ...res.value, admins: res.value.admins.filter((a) => a.id !== id) };
+    setUsers(next);
+    await persist.users(next);
     await addLog("Hapus admin", nama);
   }
 
   async function saveSuperAdmin(e) {
     e.preventDefault();
-    const next = { ...users, superadmin: { username: spForm.username, password: spForm.password || users.superadmin.password } };
+    const res = await storageGet(KEYS.users, users);
+    if (!res.ok) { setMsg("Gagal terhubung ke server, coba lagi. (Data tidak disimpan.)"); return; }
+    const fresh = res.value;
+    const next = { ...fresh, superadmin: { username: spForm.username, password: spForm.password || fresh.superadmin.password } };
+    setUsers(next);
     await persist.users(next);
     await addLog("Ubah kredensial super admin", spForm.username);
     setSpForm({ ...spForm, password: "" });
@@ -1666,7 +1677,11 @@ function ManajemenUser({ ctx }) {
 
   async function savePin(e) {
     e.preventDefault();
-    await persist.users({ ...users, viewerPin: pinForm });
+    const res = await storageGet(KEYS.users, users);
+    if (!res.ok) { setMsg("Gagal terhubung ke server, coba lagi. (Data tidak disimpan.)"); return; }
+    const next = { ...res.value, viewerPin: pinForm };
+    setUsers(next);
+    await persist.users(next);
     await addLog("Ubah PIN viewer", "***");
     setMsg("PIN viewer diperbarui.");
     setTimeout(() => setMsg(""), 2000);
@@ -1675,6 +1690,7 @@ function ManajemenUser({ ctx }) {
   return (
     <div>
       <PageHeader title="Manajemen User" subtitle="Kelola akun Admin, kredensial Super Admin, dan PIN Viewer." />
+      {syncMsg && <ErrorNote text={syncMsg} />}
       {msg && <div style={{ fontSize: 12.5, color: "#2F5D50", marginBottom: 14 }}>{msg}</div>}
       <div className="grid-eq2">
         <Card>
